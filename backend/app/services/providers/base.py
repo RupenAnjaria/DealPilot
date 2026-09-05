@@ -46,9 +46,10 @@ def _matches_query(canonical: dict[str, Any], raw_listing: dict[str, Any], parse
         return False
     if parsed_query.sku and (raw_listing.get("sku") or "").lower() != parsed_query.sku.lower():
         return False
-    if parsed_query.model and not (
-        _contains(canonical["model"], parsed_query.model) or _contains(parsed_query.model, canonical["model"])
-    ):
+    if parsed_query.model and parsed_query.model.strip().lower() != canonical["model"].strip().lower():
+        # Exact match only: a substring/containment check would let a query for "Air Max 270"
+        # also match the deliberately-similar "Air Max 270 React" (a different product whose
+        # name happens to start with the same words).
         return False
     if parsed_query.category and not _contains(canonical["category"], parsed_query.category):
         return False

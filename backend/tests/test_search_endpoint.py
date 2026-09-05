@@ -100,3 +100,46 @@ def test_search_survives_a_single_provider_failure(monkeypatch) -> None:
     all_providers = {listing["provider"] for group in body["groups"] for listing in group["listings"]}
     assert "ebay" not in all_providers
     assert len(body["groups"]) >= 1
+
+
+# --- Demo scenarios: fixed queries the live demo relies on -----------------------------
+
+
+def test_demo_scenario_1_pegasus_41_specific_variant() -> None:
+    response = client.post(
+        "/api/search", json={"query": "Find Nike Pegasus 41 men's size 10 black under $120"}
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["parsed_query"]["brand"] == "Nike"
+    assert body["parsed_query"]["model"] == "Pegasus 41"
+    assert len(body["groups"]) == 1
+    assert len(body["groups"][0]["listings"]) == 4
+    assert body["ranking"]["best_deal_listing_id"] is not None
+    assert body["ranking"]["explanation"] != ""
+
+
+def test_demo_scenario_2_air_max_270_excludes_similar_variant() -> None:
+    response = client.post("/api/search", json={"query": "Find Nike Air Max 270 men's size 10"})
+    assert response.status_code == 200
+    body = response.json()
+    assert body["parsed_query"]["model"] == "Air Max 270"
+    assert len(body["groups"]) == 1
+    listings = body["groups"][0]["listings"]
+    assert all(listing["model"] == "Air Max 270" for listing in listings)
+    assert body["ranking"]["best_deal_listing_id"] is not None
+
+
+def test_demo_scenario_3_cheapest_running_shoe_ranks_across_products() -> None:
+    response = client.post(
+        "/api/search", json={"query": "Find the cheapest Nike running shoe under $100"}
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["parsed_query"]["brand"] == "Nike"
+    assert body["parsed_query"]["category"] == "running shoe"
+    assert body["parsed_query"]["max_price"] == 100.0
+    assert len(body["groups"]) >= 1
+    assert body["ranking"]["cheapest_listing_id"] is not None
+    all_listing_ids = {listing["listing_id"] for group in body["groups"] for listing in group["listings"]}
+    assert body["ranking"]["cheapest_listing_id"] in all_listing_ids

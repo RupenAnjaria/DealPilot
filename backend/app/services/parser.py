@@ -11,8 +11,10 @@ from app.services.providers.base import load_catalog
 COLOR_WORDS = [
     "black", "white", "grey", "gray", "red", "blue", "pink", "green", "navy", "brown", "tan",
 ]
-# Longest phrases first so "running shoes" wins over the more generic "shoes".
-CATEGORY_WORDS = ["running shoes", "sneakers", "shoes", "jeans", "pants", "jacket", "shirt", "boots"]
+# Longest/plural phrases first so "running shoes" wins over "running shoe" wins over "shoes".
+CATEGORY_WORDS = [
+    "running shoes", "running shoe", "sneakers", "shoes", "shoe", "jeans", "pants", "jacket", "shirt", "boots",
+]
 
 _MAX_PRICE_PATTERNS = [
     re.compile(r"(?:under|below|less than|maximum)\s*\$?\s*(\d+(?:\.\d+)?)", re.IGNORECASE),

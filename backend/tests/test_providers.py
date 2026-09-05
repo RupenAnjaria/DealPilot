@@ -95,6 +95,15 @@ def test_all_providers_return_matching_listings_for_full_query() -> None:
         assert listing.total_price == round(listing.price + listing.shipping, 2)
 
 
+def test_model_query_does_not_also_match_a_similarly_named_variant() -> None:
+    # "Air Max 270" must not also pull in the deliberately-similar "Air Max 270 React".
+    providers = get_providers()
+    query = _query(brand="Nike", model="Air Max 270")
+    all_listings = [listing for provider in providers for listing in provider.search(query)]
+    assert all_listings
+    assert all(listing.model == "Air Max 270" for listing in all_listings)
+
+
 def test_max_price_filters_out_expensive_listings() -> None:
     providers = get_providers()
     query = _query(brand="Adidas", model="Ultraboost 22", max_price=100.0)

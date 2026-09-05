@@ -2,7 +2,13 @@ from app import config
 from app.services.ai import client as ai_client
 
 
+def test_demo_mode_defaults_to_on() -> None:
+    # No DEMO_MODE=false is set in this environment/.env, so the safe default must hold.
+    assert config.DEMO_MODE is True
+
+
 def test_get_ai_client_returns_none_when_nothing_configured(monkeypatch) -> None:
+    monkeypatch.setattr(config, "DEMO_MODE", False)
     monkeypatch.setattr(config, "AZURE_OPENAI_ENDPOINT", None)
     monkeypatch.setattr(config, "AZURE_OPENAI_API_KEY", None)
     monkeypatch.setattr(config, "AZURE_OPENAI_DEPLOYMENT", None)
@@ -12,7 +18,21 @@ def test_get_ai_client_returns_none_when_nothing_configured(monkeypatch) -> None
     assert ai_client.get_ai_client() is None
 
 
+def test_get_ai_client_returns_none_when_demo_mode_is_on_even_if_configured(monkeypatch) -> None:
+    monkeypatch.setattr(config, "DEMO_MODE", True)
+    monkeypatch.setattr(config, "AZURE_OPENAI_ENDPOINT", "https://example.openai.azure.com")
+    monkeypatch.setattr(config, "AZURE_OPENAI_API_KEY", "azure-key")
+    monkeypatch.setattr(config, "AZURE_OPENAI_DEPLOYMENT", "gpt-4o")
+
+    calls = []
+    monkeypatch.setattr("openai.AzureOpenAI", lambda **kwargs: calls.append("azure") or object())
+
+    assert ai_client.get_ai_client() is None
+    assert calls == []
+
+
 def test_get_ai_client_prefers_azure_when_both_configured(monkeypatch) -> None:
+    monkeypatch.setattr(config, "DEMO_MODE", False)
     monkeypatch.setattr(config, "AZURE_OPENAI_ENDPOINT", "https://example.openai.azure.com")
     monkeypatch.setattr(config, "AZURE_OPENAI_API_KEY", "azure-key")
     monkeypatch.setattr(config, "AZURE_OPENAI_DEPLOYMENT", "gpt-4o")
@@ -30,6 +50,7 @@ def test_get_ai_client_prefers_azure_when_both_configured(monkeypatch) -> None:
 
 
 def test_get_ai_client_falls_back_to_openai_compatible(monkeypatch) -> None:
+    monkeypatch.setattr(config, "DEMO_MODE", False)
     monkeypatch.setattr(config, "AZURE_OPENAI_ENDPOINT", None)
     monkeypatch.setattr(config, "AZURE_OPENAI_API_KEY", None)
     monkeypatch.setattr(config, "AZURE_OPENAI_DEPLOYMENT", None)
@@ -46,6 +67,7 @@ def test_get_ai_client_falls_back_to_openai_compatible(monkeypatch) -> None:
 
 
 def test_azure_client_construction_failure_returns_none(monkeypatch) -> None:
+    monkeypatch.setattr(config, "DEMO_MODE", False)
     monkeypatch.setattr(config, "AZURE_OPENAI_ENDPOINT", "https://example.openai.azure.com")
     monkeypatch.setattr(config, "AZURE_OPENAI_API_KEY", "azure-key")
     monkeypatch.setattr(config, "AZURE_OPENAI_DEPLOYMENT", "gpt-4o")

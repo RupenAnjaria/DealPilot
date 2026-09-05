@@ -108,8 +108,11 @@ def _build_openai_compatible_client() -> Optional[AIClient]:
 
 
 def get_ai_client() -> Optional[AIClient]:
-    """DEMO MODE vs AI MODE switch: returns None when nothing is configured, in which case
-    every caller falls back to its deterministic behavior. Azure OpenAI takes priority when
-    both are configured; otherwise a generic OpenAI-compatible endpoint is used.
+    """DEMO MODE vs AI MODE switch: returns None whenever DEMO_MODE is on (the default) or
+    nothing is configured, in which case every caller falls back to its deterministic
+    behavior. Azure OpenAI takes priority when both are configured; otherwise a generic
+    OpenAI-compatible endpoint is used.
     """
+    if config.DEMO_MODE:
+        return None
     return _build_azure_client() or _build_openai_compatible_client()

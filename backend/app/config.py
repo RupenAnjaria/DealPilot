@@ -4,6 +4,13 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+# DEMO MODE (default on): forces the app to run fully deterministically — no AI client is
+# ever constructed, regardless of which AI credentials happen to be set below. This is the
+# reliability guarantee for a live demo recording: it can never fail, stall, or produce a
+# different answer because of an AI provider, even if Azure/OpenAI vars are left configured
+# in the environment from earlier testing. Set DEMO_MODE=false to actually exercise AI MODE.
+DEMO_MODE = os.getenv("DEMO_MODE", "true").strip().lower() not in ("false", "0", "no")
+
 # Azure OpenAI (optional) — takes priority when configured alongside the generic settings below.
 AZURE_OPENAI_ENDPOINT = os.getenv("AZURE_OPENAI_ENDPOINT")
 AZURE_OPENAI_API_KEY = os.getenv("AZURE_OPENAI_API_KEY")
