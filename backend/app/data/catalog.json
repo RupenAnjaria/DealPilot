@@ -1,0 +1,125 @@
+{
+  "products": [
+    {
+      "id": "nike-pegasus-41",
+      "brand": "Nike",
+      "model": "Pegasus 41",
+      "sku": "DV3853-001",
+      "category": "running shoes",
+      "gender": "men",
+      "sizes": ["8", "9", "9.5", "10", "10.5", "11", "12"],
+      "colors": ["black", "white", "grey"],
+      "base_price": 112.00
+    },
+    {
+      "id": "nike-pegasus-41-women",
+      "brand": "Nike",
+      "model": "Pegasus 41",
+      "sku": "DV3854-001",
+      "category": "running shoes",
+      "gender": "women",
+      "sizes": ["6", "7", "8", "9", "10"],
+      "colors": ["black", "pink", "white"],
+      "base_price": 112.00
+    },
+    {
+      "id": "nike-pegasus-40",
+      "brand": "Nike",
+      "model": "Pegasus 40",
+      "sku": "DV3853-100",
+      "category": "running shoes",
+      "gender": "men",
+      "sizes": ["8", "9", "10", "11", "12"],
+      "colors": ["white", "blue"],
+      "base_price": 99.00
+    },
+    {
+      "id": "nike-air-max-270",
+      "brand": "Nike",
+      "model": "Air Max 270",
+      "sku": "AH8050-002",
+      "category": "sneakers",
+      "gender": "men",
+      "sizes": ["8", "9", "10", "11"],
+      "colors": ["black", "white", "red"],
+      "base_price": 150.00
+    },
+    {
+      "id": "nike-air-max-270-react",
+      "brand": "Nike",
+      "model": "Air Max 270 React",
+      "sku": "AO4971-101",
+      "category": "sneakers",
+      "gender": "men",
+      "sizes": ["8", "9", "10", "11", "12"],
+      "colors": ["black", "grey"],
+      "base_price": 160.00
+    },
+    {
+      "id": "nike-air-force-1-07",
+      "brand": "Nike",
+      "model": "Air Force 1 '07",
+      "sku": "CW2288-111",
+      "category": "sneakers",
+      "gender": "men",
+      "sizes": ["8", "9", "10", "11", "12", "13"],
+      "colors": ["white", "black"],
+      "base_price": 115.00
+    },
+    {
+      "id": "nike-air-force-1-shadow",
+      "brand": "Nike",
+      "model": "Air Force 1 Shadow",
+      "sku": "CI0919-100",
+      "category": "sneakers",
+      "gender": "women",
+      "sizes": ["6", "7", "8", "9", "10"],
+      "colors": ["white", "pink"],
+      "base_price": 130.00
+    },
+    {
+      "id": "nike-vomero-17",
+      "brand": "Nike",
+      "model": "Vomero 17",
+      "sku": "FB1309-002",
+      "category": "running shoes",
+      "gender": "men",
+      "sizes": ["8", "9", "10", "11", "12"],
+      "colors": ["black", "white"],
+      "base_price": 145.00
+    },
+    {
+      "id": "nike-vomero-18",
+      "brand": "Nike",
+      "model": "Vomero 18",
+      "sku": "HM4460-001",
+      "category": "running shoes",
+      "gender": "men",
+      "sizes": ["9", "10", "11", "12"],
+      "colors": ["white", "green"],
+      "base_price": 160.00
+    },
+    {
+      "id": "adidas-ultraboost-22",
+      "brand": "Adidas",
+      "model": "Ultraboost 22",
+      "sku": "GZ0127",
+      "category": "running shoes",
+      "gender": "men",
+      "sizes": ["8", "9", "10", "11"],
+      "colors": ["black", "blue"],
+      "base_price": 190.00
+    },
+    {
+      "id": "levis-501-jeans",
+      "brand": "Levi's",
+      "model": "501 Original",
+      "sku": "005010000",
+      "category": "jeans",
+      "gender": "men",
+      "sizes": ["30", "32", "34", "36"],
+      "colors": ["blue", "black"],
+      "base_price": 69.50
+    }
+  ]
+}
