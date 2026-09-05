@@ -113,30 +113,11 @@ def test_best_deal_reason_reflects_availability_not_a_hardcoded_guess() -> None:
 
 
 def test_ai_polish_rejected_when_it_drops_a_price(monkeypatch) -> None:
-    monkeypatch.setattr(explainer.config, "azure_openai_configured", lambda: True)
-
-    class _FakeMessage:
-        content = "Nike has a great deal for you today!"  # price dropped
-
-    class _FakeChoice:
-        message = _FakeMessage()
-
-    class _FakeResponse:
-        choices = [_FakeChoice()]
-
-    class _FakeCompletions:
-        def create(self, **kwargs):
-            return _FakeResponse()
-
-    class _FakeChat:
-        completions = _FakeCompletions()
-
     class _FakeClient:
-        chat = _FakeChat()
+        def complete_text(self, system_prompt: str, user_prompt: str) -> str:
+            return "Nike has a great deal for you today!"  # price dropped
 
-    import openai
-
-    monkeypatch.setattr(openai, "AzureOpenAI", lambda **kwargs: _FakeClient())
+    monkeypatch.setattr(explainer, "get_ai_client", lambda: _FakeClient())
 
     listing = _listing()
     groups = [_group(listing)]
@@ -151,30 +132,11 @@ def test_ai_polish_rejected_when_it_drops_a_price(monkeypatch) -> None:
 
 
 def test_ai_polish_accepted_when_facts_preserved(monkeypatch) -> None:
-    monkeypatch.setattr(explainer.config, "azure_openai_configured", lambda: True)
-
-    class _FakeMessage:
-        content = "Great news — Nike has it for $130.00 total, the best price around!"
-
-    class _FakeChoice:
-        message = _FakeMessage()
-
-    class _FakeResponse:
-        choices = [_FakeChoice()]
-
-    class _FakeCompletions:
-        def create(self, **kwargs):
-            return _FakeResponse()
-
-    class _FakeChat:
-        completions = _FakeCompletions()
-
     class _FakeClient:
-        chat = _FakeChat()
+        def complete_text(self, system_prompt: str, user_prompt: str) -> str:
+            return "Great news — Nike has it for $130.00 total, the best price around!"
 
-    import openai
-
-    monkeypatch.setattr(openai, "AzureOpenAI", lambda **kwargs: _FakeClient())
+    monkeypatch.setattr(explainer, "get_ai_client", lambda: _FakeClient())
 
     listing = _listing()
     groups = [_group(listing)]
@@ -186,3 +148,22 @@ def test_ai_polish_accepted_when_facts_preserved(monkeypatch) -> None:
     )
     text = explainer.generate_explanation(groups, ranking, ParsedQuery(raw_query="q"))
     assert "Great news" in text
+
+
+def test_ai_polish_ignored_when_client_raises(monkeypatch) -> None:
+    class _RaisingClient:
+        def complete_text(self, system_prompt: str, user_prompt: str) -> str:
+            raise RuntimeError("simulated AI outage")
+
+    monkeypatch.setattr(explainer, "get_ai_client", lambda: _RaisingClient())
+
+    listing = _listing()
+    groups = [_group(listing)]
+    ranking = RankingResult(
+        cheapest_listing_id=listing.listing_id,
+        best_deal_listing_id=listing.listing_id,
+        decision_facts=DecisionFacts(cheapest_listing_id=listing.listing_id, cheapest_total=listing.total_price),
+        explanation="",
+    )
+    text = explainer.generate_explanation(groups, ranking, ParsedQuery(raw_query="q"))
+    assert "$130.00" in text

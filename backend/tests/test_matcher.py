@@ -211,3 +211,99 @@ def test_group_confidence_reflects_the_weakest_pairwise_match_in_the_group() -> 
 def test_matcher_module_still_exposes_fuzz_for_backwards_compatibility() -> None:
     assert matcher.fuzz is not None
 
+
+# --- AI gray-zone tie-break --------------------------------------------------------------
+
+
+def _ambiguous_pair() -> tuple[ProviderListing, ProviderListing]:
+    """Same brand/model/gender but differs enough on size/color/title to land in the
+    deterministic gray zone (score ~0.73, just below MATCH_THRESHOLD) without AI."""
+    a = _listing(sku=None)
+    b = _listing(
+        listing_id="listing-2",
+        sku=None,
+        size="11",
+        color="Crimson",
+        title="Totally Unrelated Product Title Xyzzy",
+    )
+    return a, b
+
+
+def test_ambiguous_score_stays_deterministic_without_ai() -> None:
+    a, b = _ambiguous_pair()
+    result = compare_listings(a, b)
+    assert MATCH_THRESHOLD > result.score >= 0.55
+    assert result.is_match is False
+    assert result.method == "deterministic"
+
+
+def test_ambiguous_score_uses_ai_tiebreak_when_configured(monkeypatch) -> None:
+    class _FakeClient:
+        def complete_json(self, system_prompt: str, user_prompt: str):
+            return {"same_product": True}
+
+    monkeypatch.setattr(matcher, "get_ai_client", lambda: _FakeClient())
+
+    a, b = _ambiguous_pair()
+    result = compare_listings(a, b)
+    assert result.is_match is True
+    assert result.method == "ai"
+    assert any("AI judged" in line for line in result.explanation)
+
+
+def test_ai_tiebreak_falls_back_when_response_fails_validation(monkeypatch) -> None:
+    class _FakeClient:
+        def complete_json(self, system_prompt: str, user_prompt: str):
+            return {}  # missing required "same_product" key
+
+    monkeypatch.setattr(matcher, "get_ai_client", lambda: _FakeClient())
+
+    a, b = _ambiguous_pair()
+    result = compare_listings(a, b)
+    assert result.method == "deterministic"
+    assert result.is_match is False
+
+
+def test_ai_tiebreak_falls_back_when_client_raises(monkeypatch) -> None:
+    class _RaisingClient:
+        def complete_json(self, system_prompt: str, user_prompt: str):
+            raise RuntimeError("simulated AI outage")
+
+    monkeypatch.setattr(matcher, "get_ai_client", lambda: _RaisingClient())
+
+    a, b = _ambiguous_pair()
+    result = compare_listings(a, b)
+    assert result.method == "deterministic"
+    assert result.is_match is False
+
+
+def test_ai_tiebreak_never_triggers_outside_the_gray_zone(monkeypatch) -> None:
+    """A clear non-match (e.g. conflicting brand) must never even ask AI."""
+    calls = []
+
+    class _FakeClient:
+        def complete_json(self, system_prompt: str, user_prompt: str):
+            calls.append(1)
+            return {"same_product": True}
+
+    monkeypatch.setattr(matcher, "get_ai_client", lambda: _FakeClient())
+
+    a = _listing(sku=None, brand="Nike")
+    b = _listing(sku=None, brand="Adidas", model="Ultraboost 22", title="Adidas Ultraboost 22")
+    result = compare_listings(a, b)
+    assert result.is_match is False
+    assert calls == []
+
+
+def test_group_match_method_reflects_ai_tiebreak(monkeypatch) -> None:
+    class _FakeClient:
+        def complete_json(self, system_prompt: str, user_prompt: str):
+            return {"same_product": True}
+
+    monkeypatch.setattr(matcher, "get_ai_client", lambda: _FakeClient())
+
+    a, b = _ambiguous_pair()
+    groups = match_listings([a, b])
+    assert len(groups) == 1
+    assert groups[0].match_method == "ai"
+

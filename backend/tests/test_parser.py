@@ -115,8 +115,8 @@ def test_rule_based_parse_common_patterns(query: str, expected: dict) -> None:
         assert getattr(parsed, field) == value, f"{field} mismatch for query: {query!r}"
 
 
-def test_parse_query_stays_rule_based_when_azure_not_configured(monkeypatch) -> None:
-    monkeypatch.setattr("app.config.azure_openai_configured", lambda: False)
+def test_parse_query_stays_rule_based_when_ai_not_configured(monkeypatch) -> None:
+    monkeypatch.setattr(parser, "get_ai_client", lambda: None)
     parsed = parser.parse_query("running shoes under $150")
     assert parsed.parse_method == "rule_based"
 
@@ -142,11 +142,37 @@ def test_parse_query_uses_ai_only_when_ambiguous(monkeypatch) -> None:
 
 
 def test_ai_parse_failure_falls_back_silently(monkeypatch) -> None:
-    # Configured but with no real endpoint/key -> the Azure client call inside
-    # AIQueryParser.parse must fail and be caught, falling back to the rule-based result.
-    monkeypatch.setattr("app.config.azure_openai_configured", lambda: True)
+    class _RaisingClient:
+        def complete_json(self, system_prompt: str, user_prompt: str):
+            raise RuntimeError("simulated AI outage")
+
+    monkeypatch.setattr(parser, "get_ai_client", lambda: _RaisingClient())
     result = parser.parse_query("comfortable jogging shoes for my dad")
     assert result.parse_method == "rule_based"
+
+
+def test_ai_parser_rejects_a_malformed_response(monkeypatch) -> None:
+    class _FakeClient:
+        def complete_json(self, system_prompt: str, user_prompt: str):
+            return {"max_price": "not-a-number"}  # wrong type -> must fail validation
+
+    monkeypatch.setattr(parser, "get_ai_client", lambda: _FakeClient())
+    result = parser.AIQueryParser().parse("some query")
+    assert result is None
+
+
+def test_ai_parser_returns_a_validated_parsed_query(monkeypatch) -> None:
+    class _FakeClient:
+        def complete_json(self, system_prompt: str, user_prompt: str):
+            return {"brand": "Nike", "model": "Pegasus 41", "max_price": 120}
+
+    monkeypatch.setattr(parser, "get_ai_client", lambda: _FakeClient())
+    result = parser.AIQueryParser().parse("some vague query")
+    assert result is not None
+    assert result.brand == "Nike"
+    assert result.model == "Pegasus 41"
+    assert result.max_price == 120
+    assert result.parse_method == "ai"
 
 
 def test_get_query_parser_returns_fallback_composition() -> None:

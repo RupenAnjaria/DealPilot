@@ -1,10 +1,11 @@
-import json
 import re
 from abc import ABC, abstractmethod
 from typing import Optional
 
-from app import config
+from pydantic import BaseModel, ValidationError
+
 from app.models.query import ParsedQuery
+from app.services.ai.client import get_ai_client
 from app.services.providers.base import load_catalog
 
 COLOR_WORDS = [
@@ -125,36 +126,46 @@ _AI_SYSTEM_PROMPT = (
 )
 
 
+class _AIParsedFields(BaseModel):
+    """Allow-listed, type-checked shape for the AI's raw JSON response.
+
+    Validating against this (rather than trusting the JSON directly) means an AI response
+    with the wrong types, unexpected keys, or garbage values can never reach ParsedQuery.
+    """
+
+    brand: Optional[str] = None
+    model: Optional[str] = None
+    category: Optional[str] = None
+    gender: Optional[str] = None
+    size: Optional[str] = None
+    color: Optional[str] = None
+    sku: Optional[str] = None
+    max_price: Optional[float] = None
+
+
 class AIQueryParser(QueryParser):
-    """Azure OpenAI-backed parser, used as a fallback when rule-based parsing is ambiguous."""
+    """AI-backed parser, used as a fallback when rule-based parsing is ambiguous.
+
+    Works with whatever AI client is configured (Azure OpenAI or an OpenAI-compatible
+    endpoint) via get_ai_client(); returns None immediately in DEMO MODE (no client
+    configured), and returns None on any failure so parse_query() falls back silently.
+    """
 
     def parse(self, raw_query: str) -> Optional[ParsedQuery]:
-        if not config.azure_openai_configured():
+        client = get_ai_client()
+        if client is None:
             return None
         try:
-            from openai import AzureOpenAI
-
-            client = AzureOpenAI(
-                azure_endpoint=config.AZURE_OPENAI_ENDPOINT,
-                api_key=config.AZURE_OPENAI_API_KEY,
-                api_version=config.AZURE_OPENAI_API_VERSION,
-            )
-            response = client.chat.completions.create(
-                model=config.AZURE_OPENAI_DEPLOYMENT,
-                messages=[
-                    {"role": "system", "content": _AI_SYSTEM_PROMPT},
-                    {"role": "user", "content": raw_query},
-                ],
-                response_format={"type": "json_object"},
-                temperature=0,
-            )
-            content = response.choices[0].message.content
-            if not content:
+            data = client.complete_json(_AI_SYSTEM_PROMPT, raw_query)
+            if data is None:
                 return None
-            data = json.loads(content)
-            return ParsedQuery(raw_query=raw_query, parse_method="ai", **data)
+            fields = _AIParsedFields.model_validate(data)
+            return ParsedQuery(raw_query=raw_query, parse_method="ai", **fields.model_dump())
+        except ValidationError:
+            # AI returned a shape/type we don't trust — fall back rather than guess.
+            return None
         except Exception:
-            # Any AI failure (network, auth, bad response) must silently fall back to rule-based parsing.
+            # Any other AI failure (network, auth, bad response) must fall back silently.
             return None
 
 

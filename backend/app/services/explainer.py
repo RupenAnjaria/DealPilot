@@ -1,8 +1,15 @@
+import logging
 from typing import Optional
 
-from app import config
 from app.models.product import DecisionFacts, ProductGroup, ProviderListing, RankingResult
 from app.models.query import ParsedQuery
+from app.services.ai.client import get_ai_client
+
+logger = logging.getLogger(__name__)
+
+# Sanity bound on AI-polished explanation length; a factual 2-3 sentence summary should
+# never legitimately be this long, so anything longer signals a malformed response.
+_MAX_POLISHED_LENGTH = 1000
 
 
 def _find_listing(groups: list[ProductGroup], listing_id: Optional[str]) -> Optional[ProviderListing]:
@@ -61,35 +68,30 @@ _AI_SYSTEM_PROMPT = (
 
 
 def _ai_polish(template: str, facts: DecisionFacts) -> Optional[str]:
-    if not config.azure_openai_configured():
+    """Rephrase the deterministic template. May only change wording, never the facts.
+
+    Uses whatever AI client is configured (Azure OpenAI or an OpenAI-compatible endpoint)
+    via get_ai_client(); returns None immediately in DEMO MODE, and returns None on any
+    failure or validation problem so generate_explanation() falls back to the template.
+    """
+    client = get_ai_client()
+    if client is None:
         return None
     try:
-        from openai import AzureOpenAI
-
-        client = AzureOpenAI(
-            azure_endpoint=config.AZURE_OPENAI_ENDPOINT,
-            api_key=config.AZURE_OPENAI_API_KEY,
-            api_version=config.AZURE_OPENAI_API_VERSION,
-        )
-        response = client.chat.completions.create(
-            model=config.AZURE_OPENAI_DEPLOYMENT,
-            messages=[
-                {"role": "system", "content": _AI_SYSTEM_PROMPT},
-                {"role": "user", "content": template},
-            ],
-            temperature=0.3,
-        )
-        polished = response.choices[0].message.content
-        if not polished:
-            return None
-        # Guard against the model silently altering the numbers it was told not to touch.
-        for total in (facts.cheapest_total, facts.best_deal_total, facts.official_total):
-            if total is not None and _money(total) not in polished:
-                return None
-        return polished.strip()
+        polished = client.complete_text(_AI_SYSTEM_PROMPT, template)
     except Exception:
-        # Any AI failure falls back to the deterministic template — never breaks the response.
+        logger.warning("AI explanation polish raised unexpectedly; using the template instead.", exc_info=True)
         return None
+    if not polished:
+        return None
+    if len(polished) > _MAX_POLISHED_LENGTH:
+        logger.warning("AI explanation polish returned unexpectedly long text (%d chars); discarding.", len(polished))
+        return None
+    # Guard against the model silently altering the numbers it was told not to touch.
+    for total in (facts.cheapest_total, facts.best_deal_total, facts.official_total):
+        if total is not None and _money(total) not in polished:
+            return None
+    return polished.strip()
 
 
 def generate_explanation(groups: list[ProductGroup], ranking: RankingResult, parsed_query: ParsedQuery) -> str:

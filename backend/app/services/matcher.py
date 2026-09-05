@@ -1,10 +1,15 @@
+import logging
 import re
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import Literal, Optional
 
+from pydantic import BaseModel, ValidationError
 from rapidfuzz import fuzz
 
 from app.models.product import ProductGroup, ProviderListing
+from app.services.ai.client import get_ai_client
+
+logger = logging.getLogger(__name__)
 
 # Weights reflect the requested priority order (SKU is handled separately, below, as an
 # absolute override rather than a weighted signal). They must sum to 1.0.
@@ -28,6 +33,48 @@ _CRITICAL_FIELDS = ("brand", "model", "gender")
 # Minimum confidence to treat two listings as the same underlying product.
 MATCH_THRESHOLD = 0.75
 
+# Deterministic scores in this band are genuinely ambiguous: not confidently a match, but
+# not confidently a conflict either. Only in this narrow range do we consult AI (if
+# configured) to break the tie — it can only flip is_match, never the score itself.
+_AI_TIEBREAK_LOW = 0.55
+
+_AI_MATCH_SYSTEM_PROMPT = (
+    "Decide whether two retail product listings describe the exact same underlying product "
+    "(same brand, model, size, and color), just worded differently by different sellers. "
+    'Respond with a JSON object: {"same_product": true or false}.'
+)
+
+
+class _AIMatchVerdict(BaseModel):
+    """Type-checked shape for the AI's tie-break response — never trust the raw JSON."""
+
+    same_product: bool
+
+
+def _ask_ai_same_product(listing_a: ProviderListing, listing_b: ProviderListing) -> Optional[bool]:
+    """Consult AI only for a genuinely ambiguous pair. Returns None (defer to the
+    deterministic threshold) in DEMO MODE or on any failure/invalid response."""
+    client = get_ai_client()
+    if client is None:
+        return None
+    user_prompt = (
+        f"Listing A: brand={listing_a.brand}, model={listing_a.model}, gender={listing_a.gender}, "
+        f"size={listing_a.size}, color={listing_a.color}, title={listing_a.title!r}\n"
+        f"Listing B: brand={listing_b.brand}, model={listing_b.model}, gender={listing_b.gender}, "
+        f"size={listing_b.size}, color={listing_b.color}, title={listing_b.title!r}"
+    )
+    try:
+        data = client.complete_json(_AI_MATCH_SYSTEM_PROMPT, user_prompt)
+        if data is None:
+            return None
+        return _AIMatchVerdict.model_validate(data).same_product
+    except ValidationError:
+        logger.warning("AI match verdict failed validation; deferring to the deterministic score.")
+        return None
+    except Exception:
+        logger.warning("AI match tie-break raised unexpectedly; deferring to the deterministic score.", exc_info=True)
+        return None
+
 
 @dataclass
 class MatchResult:
@@ -35,6 +82,7 @@ class MatchResult:
 
     score: float
     is_match: bool
+    method: Literal["deterministic", "ai"] = "deterministic"
     explanation: list[str] = field(default_factory=list)
 
 
@@ -121,6 +169,15 @@ def compare_listings(listing_a: ProviderListing, listing_b: ProviderListing) -> 
     explanation.append(f"Title similarity {title_ratio:.0%} ('{listing_a.title}' vs '{listing_b.title}').")
 
     score = round(weighted_sum / total_weight, 4) if total_weight else 0.0
+
+    if _AI_TIEBREAK_LOW <= score < MATCH_THRESHOLD:
+        ai_verdict = _ask_ai_same_product(listing_a, listing_b)
+        if ai_verdict is not None:
+            explanation.append(
+                f"Score was ambiguous ({score:.0%}); AI judged same_product={ai_verdict}."
+            )
+            return MatchResult(score=score, is_match=ai_verdict, method="ai", explanation=explanation)
+
     return MatchResult(score=score, is_match=score >= MATCH_THRESHOLD, explanation=explanation)
 
 
@@ -132,6 +189,7 @@ def _canonical_title(listing: ProviderListing) -> str:
 class _WorkingGroup:
     listings: list[ProviderListing] = field(default_factory=list)
     match_confidence: float = 1.0
+    match_method: Literal["deterministic", "ai"] = "deterministic"
 
 
 def match_listings(listings: list[ProviderListing]) -> list[ProductGroup]:
@@ -141,15 +199,17 @@ def match_listings(listings: list[ProviderListing]) -> list[ProductGroup]:
     groups: list[_WorkingGroup] = []
 
     for listing in listings:
-        best_group, best_score = None, 0.0
+        best_group, best_score, best_method = None, 0.0, "deterministic"
         for group in groups:
             result = compare_listings(listing, group.listings[0])
             if result.is_match and result.score > best_score:
-                best_group, best_score = group, result.score
+                best_group, best_score, best_method = group, result.score, result.method
 
         if best_group is not None:
             best_group.listings.append(listing)
             best_group.match_confidence = min(best_group.match_confidence, best_score)
+            if best_method == "ai":
+                best_group.match_method = "ai"
         else:
             groups.append(_WorkingGroup(listings=[listing]))
 
@@ -159,7 +219,7 @@ def match_listings(listings: list[ProviderListing]) -> list[ProductGroup]:
             canonical_title=_canonical_title(group.listings[0]),
             listings=group.listings,
             match_confidence=round(group.match_confidence, 4),
-            match_method="deterministic",
+            match_method=group.match_method,
         )
         for i, group in enumerate(groups)
     ]
