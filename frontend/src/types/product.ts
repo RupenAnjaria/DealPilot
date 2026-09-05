@@ -80,7 +80,3 @@ export interface SearchResponse {
   groups: ProductGroup[]
   ranking: RankingResult
 }
-
-export interface ProviderInfo {
-  name: string
-}
